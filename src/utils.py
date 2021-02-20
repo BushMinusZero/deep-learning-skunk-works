@@ -1,3 +1,4 @@
+import csv
 import os
 import unicodedata
 import re
@@ -141,3 +142,15 @@ def tensors_from_pair(input_lang: LanguageDictionary, output_lang: LanguageDicti
   input_tensor = tensor_from_sentence(input_lang, pair[0])
   target_tensor = tensor_from_sentence(output_lang, pair[1])
   return input_tensor, target_tensor
+
+
+def write_losses(output_path: str, training_loss: List[float], validation_loss: List[float]):
+  """Write training and validation losses to CSV file."""
+  assert len(training_loss) == len(validation_loss), f"{len(training_loss)} " \
+                                                     f"!= {len(validation_loss)}"
+  with open(output_path, 'w') as f:
+    writer = csv.writer(f)
+    writer.writerow(['epoch', 'training_loss', 'validation_loss'])
+    for i, (train, val) in enumerate(zip(training_loss, validation_loss)):
+      writer.writerow([i, train, val])
+  print(f"Train and validation losses are output to {output_path}")
