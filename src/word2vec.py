@@ -1,7 +1,7 @@
 import csv
 import os
 from datetime import datetime
-from typing import Tuple, Generator, List, Optional, Dict, Callable
+from typing import Tuple, Generator, List, Optional, Callable
 
 import torch
 from torch import Tensor
@@ -188,19 +188,16 @@ def word2vec_preprocessing(raw_data_path: str, data_dir: str, features_dir: str)
 
 
 class Word2VecModel(nn.Module):
-  def __init__(self, vocab_size: int, embedding_dim: int, context_size: int,
-               padding_idx: int = 1):
-    """ Word to Vec
+  def __init__(self, vocab_size: int, embedding_dim: int, context_size: int):
+    """ Word to Vector model
     :param vocab_size: equal to the size of the vocabulary
     :param embedding_dim: length of the embedding vector for each word
-    :param padding_idx:
+    :param context_size: the number of context tokens surrounding the target token
     """
     super(Word2VecModel, self).__init__()
     self.vocab_size = vocab_size
     self.embedding_dim = embedding_dim
-    self.padding_idx = padding_idx
     self.context_size = context_size
-    # TODO: add embedding max_norm
     self.embeddings = nn.Embedding(vocab_size, embedding_dim)  # (vocab_size, 64)
     self.linear1 = nn.Linear(context_size * embedding_dim, 128)  # (64x4, 128) -> (256, 128)
     self.linear2 = nn.Linear(128, vocab_size)
