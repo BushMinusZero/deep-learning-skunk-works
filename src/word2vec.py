@@ -1,7 +1,7 @@
 import csv
 import os
 from datetime import datetime
-from typing import Tuple, Generator, List, Optional, Dict
+from typing import Tuple, Generator, List, Optional, Dict, Callable
 
 import torch
 from torch import Tensor
@@ -17,7 +17,7 @@ from torchtext.vocab import Vocab
 from tqdm import tqdm
 
 from src.early_stopping import EarlyStopping
-from src.utils import write_losses
+from src.utils import write_losses, cosine_similarity
 
 
 class Word2VecConfig:
@@ -282,9 +282,9 @@ class TrainingLoop:
     }, self.config.model_checkpoint_path)
 
   def iterate_epoch(self) -> Generator[int, None, None]:
+
     for epoch in range(self.num_epochs):
       print(f'Starting epoch {epoch}')
-
       # Iterate over the epochs and train model here
       yield epoch
 
@@ -389,42 +389,31 @@ class InferenceServer:
     self.model.load_state_dict(model_info['model_state_dict'])
     self.model.eval()
 
+  def embed_word(self, word: str) -> Tensor:
+    return self.embed_tokens([word]).squeeze()
 
-def embed_test_data():
-  # TODO: get latest model date form models dir
-  conf = Word2VecConfig(model_date='2021-02-20T15:42:57')
-  server = InferenceServer(conf)
-  server.load_model(conf.model_checkpoint_path)
+  def calculate_similarity(self, word1: str, word2: str,
+                           similarity_func: Callable = cosine_similarity) -> float:
+    e1 = self.embed_word(word1)
+    e2 = self.embed_word(word2)
+    return similarity_func(e1, e2).item()
 
-  with open(os.path.join(conf.data_dir, 'test.tsv')) as f:
-    reader = csv.reader(f, delimiter='\t')
-    next(reader)  # skip header
-    for row in reader:
-      server.model.embedding(row[0].split())
-    # TODO: save embedding predictions
+
+def get_latest_word2vec_model(date_fmt: str = '%Y-%m-%dT%H:%M:%S') -> str:
+  model_dirs = os.listdir(Word2VecConfig.model_root_dir)
+  dates = [datetime.strptime(d, date_fmt) for d in model_dirs]
+  return max(dates).strftime(date_fmt)
 
 
 def inference():
-  # TODO: get latest model date form models dir
-  conf = Word2VecConfig(model_date='2021-02-20T17:45:19')
+  conf = Word2VecConfig(model_date=get_latest_word2vec_model())
   server = InferenceServer(conf)
   server.load_model(conf.model_checkpoint_path)
 
-  word1 = 'hello'
-  word2 = 'hi'
-  word1_index = server.vocab.get(word1, None)
-  word2_index = server.vocab.get(word2, None)
-  print(f'Word1 index: {word1_index}')
-  print(f'Word2 index: {word2_index}')
-
-  e1 = server.embed_tokens([word1])
-  e2 = server.embed_tokens([word2])
-  # breakpoint()
-  l2_norm = torch.norm(torch.dot(e1.squeeze(), e2.squeeze()))
-  print(l2_norm.item())
-  # TODO: compare words
+  similarity = server.calculate_similarity('hello', 'hi', similarity_func=cosine_similarity)
+  print(similarity)
 
 
 if __name__ == '__main__':
-  train()
-  # inference()
+  # train()
+  inference()

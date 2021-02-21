@@ -7,7 +7,7 @@ import time
 import math
 
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 
 
 class LanguageDictionary:
@@ -154,3 +154,12 @@ def write_losses(output_path: str, training_loss: List[float], validation_loss: 
     for i, (train, val) in enumerate(zip(training_loss, validation_loss)):
       writer.writerow([i, train, val])
   print(f"Train and validation losses are output to {output_path}")
+
+
+def cosine_similarity(t1: Tensor, t2: Tensor):
+  cos = nn.CosineSimilarity(dim=0, eps=1e-6)
+  return cos(t1, t2)
+
+
+def l2_norm(t1: Tensor, t2: Tensor):
+  return torch.norm(torch.dot(t1, t2))
