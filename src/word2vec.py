@@ -1,7 +1,7 @@
 import csv
 import os
 from datetime import datetime
-from typing import Tuple, Generator, List, Optional
+from typing import Tuple, Generator, List, Optional, Dict
 
 import torch
 from torch import Tensor
@@ -12,7 +12,7 @@ import torch.optim as optim
 import torch.nn as nn
 import pandas as pd
 import numpy as np
-from torchtext.data import TabularDataset, BucketIterator
+from torchtext.data import TabularDataset, BucketIterator, get_tokenizer
 from torchtext.vocab import Vocab
 from tqdm import tqdm
 
@@ -29,17 +29,19 @@ class Word2VecConfig:
   learning_rate_step_size = 1
   context_size = 4
 
+  raw_data_path = os.path.join('data', 'eng.txt')
+  output_dir = os.path.join('data', 'word2vec')
+  data_dir = os.path.join(output_dir, 'data')
+  features_dir = os.path.join(output_dir, 'features')
+  model_root_dir = os.path.join(output_dir, 'models')
+
   def __init__(self, model_date: Optional[str] = None):
     now = (model_date if model_date else datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
-    self.raw_data_path = os.path.join('data', 'eng.txt')
-    self.output_dir = os.path.join('data', 'word2vec')
-    self.data_dir = os.path.join(self.output_dir, 'data')
-    self.features_dir = os.path.join(self.output_dir, 'features')
-    self.model_root_dir = os.path.join(self.output_dir, 'models')
     self.model_checkpoint_dir = os.path.join(self.model_root_dir, now)
     os.makedirs(self.output_dir, exist_ok=True)
     os.makedirs(self.model_checkpoint_dir, exist_ok=True)
     self.model_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model.pt')
+    self.model_vocab_path = os.path.join(self.model_checkpoint_dir, 'vocab.txt')
 
 
 def train_val_test_split(data_path: str, output_dir: str) -> None:
@@ -56,11 +58,10 @@ def train_val_test_split(data_path: str, output_dir: str) -> None:
   test_df.to_csv(os.path.join(output_dir, 'test.tsv'), sep='\t', index=False)
 
 
-def load_dataset(output_dir: str) -> Tuple[Tuple[TabularDataset, TabularDataset, TabularDataset],
-                                           Vocab]:
+def load_dataset(output_dir: str) -> Tuple[Tuple[TabularDataset, TabularDataset, TabularDataset], Vocab]:
   """Load train, val, and test datasets."""
-  target_text = data.LabelField()
-  context_text = data.Field()
+  target_text = data.LabelField(lower=True)
+  context_text = data.Field(lower=True)
   fields = [
     ('target', target_text),
     ('context', context_text),
@@ -74,7 +75,8 @@ def load_dataset(output_dir: str) -> Tuple[Tuple[TabularDataset, TabularDataset,
     fields=fields,
     skip_header=True
   )
-  target_text.build_vocab(train.target, train.context, val.target, val.context)
+  target_text.build_vocab(train.target, train.context, val.target, val.context,
+                          specials=['<pad>', '<unk>'])
   context_text.vocab = target_text.vocab
   return (train, val, test), target_text.vocab
 
@@ -126,13 +128,17 @@ class DataManager:
 
   def save_vocab(self, output_path: str) -> None:
     """Save vocabulary generated during model training."""
-    self.source_vocab
-    # todo: save vocab
+    with open(output_path, 'w+') as f:
+      for token, index in self.source_vocab.stoi.items():
+        f.write(f'{index}\t{token}\n')
 
-  def load_vocab(self, vocab_path: str) -> None:
-    """Load vocabulary generated during model training."""
-    self.source_vocab = None
-    # todo: load vocab
+  def read_vocab(self, path: str):
+    vocab = dict()
+    with open(path, 'r') as f:
+      for line in f:
+        index, token = line.split('\t')
+        vocab[token.strip()] = int(index)
+    return vocab
 
 
 def create_cbow_features(input_dir: str, output_dir: str) -> None:
@@ -158,8 +164,24 @@ def create_cbow_features(input_dir: str, output_dir: str) -> None:
 
 
 def word2vec_preprocessing(raw_data_path: str, data_dir: str, features_dir: str):
-  # TODO: add data pre-processing steps (tokenization etc.)
+  # Split into train/val/test
   train_val_test_split(raw_data_path, data_dir)
+
+  # Tokenize files in data_dir
+  # Download en tokenizer with `python -m spacy download en`
+  en_tokenizer = get_tokenizer('spacy', language='en_core_web_sm')
+  tokenized_rows = []
+  for filename in ['test.tsv', 'val.tsv', 'train.tsv']:
+    data_path = os.path.join(data_dir, filename)
+    with open(data_path) as f:
+      reader = csv.reader(f, delimiter='\t')
+      next(reader)  # skip header
+      for row in reader:
+        tokenized_rows.append([' '.join(en_tokenizer(row[0]))])
+    with open(data_path, 'w') as f:
+      writer = csv.writer(f, delimiter='\t')
+      writer.writerow(['eng'])
+      writer.writerows(tokenized_rows)
 
   # Create features
   create_cbow_features(data_dir, features_dir)
@@ -213,6 +235,7 @@ class TrainingLoop:
     # TODO: remove sentences that exceed the maximum sequence length
     self.data_manager = DataManager(self.config.batch_size)
     self.data_manager.load_data(self.config.features_dir)
+    self.data_manager.save_vocab(self.config.model_vocab_path)
 
     # Initialize model
     self.model = Word2VecModel(
@@ -342,24 +365,66 @@ def train():
                loop.train_losses, loop.val_losses)
 
 
+class InferenceServer:
+
+  def __init__(self, config: Word2VecConfig):
+    self.config = config
+    self.model = None
+    data_manager = DataManager(self.config.batch_size)
+    self.vocab = data_manager.read_vocab(self.config.model_vocab_path)
+    self.unk_index = self.vocab['<unk>']
+
+  def embed_tokens(self, tokens: List[str]) -> Tensor:
+    sentence_indices = [self.vocab.get(word, self.unk_index) for word in tokens]
+    sentence_tensor = torch.LongTensor(sentence_indices)
+    return self.model.embeddings(sentence_tensor)
+
+  def load_model(self, model_path: str):
+    self.model = Word2VecModel(
+      vocab_size=len(self.vocab),
+      embedding_dim=self.config.embedding_dim,
+      context_size=self.config.context_size
+    )
+    model_info = torch.load(model_path)
+    self.model.load_state_dict(model_info['model_state_dict'])
+    self.model.eval()
+
+
+def embed_test_data():
+  # TODO: get latest model date form models dir
+  conf = Word2VecConfig(model_date='2021-02-20T15:42:57')
+  server = InferenceServer(conf)
+  server.load_model(conf.model_checkpoint_path)
+
+  with open(os.path.join(conf.data_dir, 'test.tsv')) as f:
+    reader = csv.reader(f, delimiter='\t')
+    next(reader)  # skip header
+    for row in reader:
+      server.model.embedding(row[0].split())
+    # TODO: save embedding predictions
+
+
+def inference():
+  # TODO: get latest model date form models dir
+  conf = Word2VecConfig(model_date='2021-02-20T17:45:19')
+  server = InferenceServer(conf)
+  server.load_model(conf.model_checkpoint_path)
+
+  word1 = 'hello'
+  word2 = 'hi'
+  word1_index = server.vocab.get(word1, None)
+  word2_index = server.vocab.get(word2, None)
+  print(f'Word1 index: {word1_index}')
+  print(f'Word2 index: {word2_index}')
+
+  e1 = server.embed_tokens([word1])
+  e2 = server.embed_tokens([word2])
+  # breakpoint()
+  l2_norm = torch.norm(torch.dot(e1.squeeze(), e2.squeeze()))
+  print(l2_norm.item())
+  # TODO: compare words
+
+
 if __name__ == '__main__':
-  conf = Word2VecConfig(model_date='2021-02-20T10:33:36')
-  # TODO: should read from vocab file generated during model training
-  data_manager = DataManager(conf.batch_size)
-  data_manager.load_vocab()  # todo: create a vocab path
-
-  # Initialize model
-  model = Word2VecModel(
-    vocab_size=len(data_manager.source_vocab),
-    embedding_dim=Word2VecConfig.embedding_dim,
-    context_size=conf.context_size
-  )
-
-  model_info = torch.load(conf.model_checkpoint_path)
-  model.load_state_dict(model_info['model_state_dict'])
-  model.eval()
-
-  for batch in data_manager.test_iterator:
-    pred = model.forward(batch.context)
-
-  # TODO: Evaluate embeddings
+  train()
+  # inference()
