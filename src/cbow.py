@@ -1,61 +1,22 @@
 import csv
 import os
 from datetime import datetime
-from typing import Tuple, Generator, List, Optional, Callable
+from typing import Tuple, Generator, List, Callable
 
 import torch
 from torch import Tensor
-from torch.nn.functional import relu, log_softmax
 from torchtext import data
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
-import torch.nn as nn
 import pandas as pd
-import numpy as np
 from torchtext.data import TabularDataset, BucketIterator, get_tokenizer
 from torchtext.vocab import Vocab
 from tqdm import tqdm
 
+from src.config import CBOWConfig
 from src.early_stopping import EarlyStopping
-from src.utils import write_losses, cosine_similarity
-
-
-class Word2VecConfig:
-  batch_size = 32
-  embedding_dim = 64
-  num_epochs = 10
-  patience = 4
-  learning_rate_decay = 0.9
-  learning_rate_step_size = 1
-  context_size = 4
-
-  raw_data_path = os.path.join('data', 'eng.txt')
-  output_dir = os.path.join('data', 'word2vec')
-  data_dir = os.path.join(output_dir, 'data')
-  features_dir = os.path.join(output_dir, 'features')
-  model_root_dir = os.path.join(output_dir, 'models')
-
-  def __init__(self, model_date: Optional[str] = None):
-    now = (model_date if model_date else datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
-    self.model_checkpoint_dir = os.path.join(self.model_root_dir, now)
-    os.makedirs(self.output_dir, exist_ok=True)
-    os.makedirs(self.model_checkpoint_dir, exist_ok=True)
-    self.model_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model.pt')
-    self.model_vocab_path = os.path.join(self.model_checkpoint_dir, 'vocab.txt')
-
-
-def train_val_test_split(data_path: str, output_dir: str) -> None:
-  """Create train/val/test split from randomized input data and write to an output directory."""
-  df = pd.read_csv(data_path, sep='\t')
-  train_df, val_df, test_df = np.split(df.sample(frac=1), [int(.6 * len(df)), int(.8 * len(df))])
-
-  print(f'Train samples: {len(train_df):,}')
-  print(f'Validate samples: {len(val_df):,}')
-  print(f'Test samples: {len(test_df):,}')
-
-  train_df.to_csv(os.path.join(output_dir, 'train.tsv'), sep='\t', index=False)
-  val_df.to_csv(os.path.join(output_dir, 'val.tsv'), sep='\t', index=False)
-  test_df.to_csv(os.path.join(output_dir, 'test.tsv'), sep='\t', index=False)
+from src.models.cbow import CBOWModel
+from src.utils import write_losses, cosine_similarity, train_val_test_split
 
 
 def load_dataset(output_dir: str) -> Tuple[Tuple[TabularDataset, TabularDataset, TabularDataset], Vocab]:
@@ -132,7 +93,8 @@ class DataManager:
       for token, index in self.source_vocab.stoi.items():
         f.write(f'{index}\t{token}\n')
 
-  def read_vocab(self, path: str):
+  @staticmethod
+  def read_vocab(path: str):
     vocab = dict()
     with open(path, 'r') as f:
       for line in f:
@@ -141,11 +103,13 @@ class DataManager:
     return vocab
 
 
-def create_cbow_features(input_dir: str, output_dir: str) -> None:
+def create_cbow_features(input_dir: str, output_dir: str, context_size: int) -> None:
   """Creates CBOW features by identifying surrounding context words."""
+  assert context_size % 2 == 0, "Context size should be even so we pick the same number of words" \
+                                " to the left and right of the target word."
   # window_size is the number of words to the left and right
   for filename in ['train.tsv', 'val.tsv', 'test.tsv']:
-    window_size = 2
+    window_size = context_size // 2
     with open(os.path.join(input_dir, filename)) as f_in, \
         open(os.path.join(output_dir, filename), 'w') as f_out:
       reader = csv.reader(f_in, delimiter='\t')
@@ -156,23 +120,23 @@ def create_cbow_features(input_dir: str, output_dir: str) -> None:
         for i, target in enumerate(words):
           words_to_the_left = words[max(0, i - window_size):i]
           words_to_the_right = words[i + 1:i + window_size + 1]
-          padded_left = ['<pad>'] * (2 - len(words_to_the_left)) + words_to_the_left
-          padded_right = words_to_the_right + ['<pad>'] * (2 - len(words_to_the_right))
+          padded_left = ['<pad>'] * (window_size - len(words_to_the_left)) + words_to_the_left
+          padded_right = words_to_the_right + ['<pad>'] * (window_size - len(words_to_the_right))
           context = padded_left + padded_right
           assert len(context) == window_size * 2
           writer.writerow([target, ' '.join(context)])
 
 
-def word2vec_preprocessing(raw_data_path: str, data_dir: str, features_dir: str):
+def cbow_preprocessing(config: CBOWConfig):
   # Split into train/val/test
-  train_val_test_split(raw_data_path, data_dir)
+  train_val_test_split(config.raw_data_path, config.data_dir)
 
   # Tokenize files in data_dir
   # Download en tokenizer with `python -m spacy download en`
   en_tokenizer = get_tokenizer('spacy', language='en_core_web_sm')
   tokenized_rows = []
   for filename in ['test.tsv', 'val.tsv', 'train.tsv']:
-    data_path = os.path.join(data_dir, filename)
+    data_path = os.path.join(config.data_dir, filename)
     with open(data_path) as f:
       reader = csv.reader(f, delimiter='\t')
       next(reader)  # skip header
@@ -184,49 +148,12 @@ def word2vec_preprocessing(raw_data_path: str, data_dir: str, features_dir: str)
       writer.writerows(tokenized_rows)
 
   # Create features
-  create_cbow_features(data_dir, features_dir)
-
-
-class Word2VecModel(nn.Module):
-  def __init__(self, vocab_size: int, embedding_dim: int, context_size: int):
-    """ Word to Vector model
-    :param vocab_size: equal to the size of the vocabulary
-    :param embedding_dim: length of the embedding vector for each word
-    :param context_size: the number of context tokens surrounding the target token
-    """
-    super(Word2VecModel, self).__init__()
-    self.vocab_size = vocab_size
-    self.embedding_dim = embedding_dim
-    self.context_size = context_size
-    self.embeddings = nn.Embedding(vocab_size, embedding_dim)  # (vocab_size, 64)
-    self.linear1 = nn.Linear(context_size * embedding_dim, 128)  # (64x4, 128) -> (256, 128)
-    self.linear2 = nn.Linear(128, vocab_size)
-    self.loss_function = nn.NLLLoss()
-
-  def forward(self, inputs: Tensor) -> Tensor:
-    embeds = self.embeddings(inputs)  # output is batch_size x context size x embedding dim
-    batch_size = inputs.shape[0]  # find the batch size on the fly because partial batches may exist
-    embeds = embeds.view((batch_size, -1))  # stacks the context word vectors in each batch
-    out = relu(self.linear1(embeds))
-    out = self.linear2(out)
-    log_probabilities = log_softmax(out, dim=1)
-    return log_probabilities
-
-  def compute_loss(self, context: Tensor, target: Tensor) -> Tensor:
-    # Transpose batch because embedding in forward() expects N x X (batch_size by sequence length)
-    context = torch.transpose(context, 0, 1)
-
-    # Run the forward pass, getting log probabilities over next batch of words
-    log_probabilities = self.forward(context)
-
-    # Compute your loss function.
-    target = target.squeeze()  # (1, batch size) -> (batch size)
-    return self.loss_function(log_probabilities, target)
+  create_cbow_features(config.data_dir, config.features_dir, config.context_size)
 
 
 class TrainingLoop:
 
-  def __init__(self, config: Word2VecConfig):
+  def __init__(self, config: CBOWConfig):
     self.config = config
     # Load data and compute vocabulary
     # TODO: remove sentences that exceed the maximum sequence length
@@ -235,7 +162,7 @@ class TrainingLoop:
     self.data_manager.save_vocab(self.config.model_vocab_path)
 
     # Initialize model
-    self.model = Word2VecModel(
+    self.model = CBOWModel(
       vocab_size=len(self.data_manager.source_vocab),
       embedding_dim=self.config.embedding_dim,
       context_size=config.context_size
@@ -348,23 +275,20 @@ class TrainingLoop:
       # Forward pass on validation data
       self.compute_validation_loss(epoch)
 
-    # Compute test loss
-    # TODO: can we compute test loss? need to handle missing values? map them to UNK?
-    # self.compute_test_loss()
-
 
 def train():
-  conf = Word2VecConfig()
-  word2vec_preprocessing(conf.raw_data_path, conf.data_dir, conf.features_dir)
+  conf = CBOWConfig()
+  cbow_preprocessing(conf)
   loop = TrainingLoop(conf)
   loop.train()
   write_losses(os.path.join(conf.model_checkpoint_dir, 'losses.csv'),
                loop.train_losses, loop.val_losses)
 
 
+# TODO: make a generic embedding inference server general to any pytorch model + vocab
 class InferenceServer:
 
-  def __init__(self, config: Word2VecConfig):
+  def __init__(self, config: CBOWConfig):
     self.config = config
     self.model = None
     data_manager = DataManager(self.config.batch_size)
@@ -377,7 +301,7 @@ class InferenceServer:
     return self.model.embeddings(sentence_tensor)
 
   def load_model(self, model_path: str):
-    self.model = Word2VecModel(
+    self.model = CBOWModel(
       vocab_size=len(self.vocab),
       embedding_dim=self.config.embedding_dim,
       context_size=self.config.context_size
@@ -396,21 +320,17 @@ class InferenceServer:
     return similarity_func(e1, e2).item()
 
 
-def get_latest_word2vec_model(date_fmt: str = '%Y-%m-%dT%H:%M:%S') -> str:
-  model_dirs = os.listdir(Word2VecConfig.model_root_dir)
+def get_latest_cbow_model(date_fmt: str = '%Y-%m-%dT%H:%M:%S') -> str:
+  model_dirs = os.listdir(CBOWConfig.model_root_dir)
   dates = [datetime.strptime(d, date_fmt) for d in model_dirs]
   return max(dates).strftime(date_fmt)
 
 
 def inference():
-  conf = Word2VecConfig(model_date=get_latest_word2vec_model())
+  conf = CBOWConfig(model_date=get_latest_cbow_model())
   server = InferenceServer(conf)
   server.load_model(conf.model_checkpoint_path)
 
-  similarity = server.calculate_similarity('hello', 'hi', similarity_func=cosine_similarity)
-  print(similarity)
-
-
-if __name__ == '__main__':
-  # train()
-  inference()
+  word1, word2 = 'hello', 'hi'
+  similarity = server.calculate_similarity(word1, word2, similarity_func=cosine_similarity)
+  print(f'Similarity between {word1} and {word2} is {similarity}')

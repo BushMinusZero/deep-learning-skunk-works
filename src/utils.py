@@ -6,6 +6,8 @@ from typing import Tuple, List
 import time
 import math
 
+import pandas as pd
+import numpy as np
 import torch
 from torch import Tensor, nn
 
@@ -163,3 +165,17 @@ def cosine_similarity(t1: Tensor, t2: Tensor):
 
 def l2_norm(t1: Tensor, t2: Tensor):
   return torch.norm(torch.dot(t1, t2))
+
+
+def train_val_test_split(data_path: str, output_dir: str) -> None:
+  """Create train/val/test split from randomized input data and write to an output directory."""
+  df = pd.read_csv(data_path, sep='\t')
+  train_df, val_df, test_df = np.split(df.sample(frac=1), [int(.6 * len(df)), int(.8 * len(df))])
+
+  print(f'Train samples: {len(train_df):,}')
+  print(f'Validate samples: {len(val_df):,}')
+  print(f'Test samples: {len(test_df):,}')
+
+  train_df.to_csv(os.path.join(output_dir, 'train.tsv'), sep='\t', index=False)
+  val_df.to_csv(os.path.join(output_dir, 'val.tsv'), sep='\t', index=False)
+  test_df.to_csv(os.path.join(output_dir, 'test.tsv'), sep='\t', index=False)

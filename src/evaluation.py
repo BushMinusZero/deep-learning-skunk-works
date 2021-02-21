@@ -1,12 +1,13 @@
 import os
 from statistics import mean
-from typing import Dict, List, Optional
+from typing import Dict, List
 from collections import defaultdict
 
-from torch import Tensor
+import pandas as pd
 
-from src.utils import l2_norm, cosine_similarity
-from src.word2vec import Word2VecConfig, InferenceServer, get_latest_word2vec_model
+from src.config import CBOWConfig
+from src.utils import cosine_similarity
+from src.cbow import InferenceServer, get_latest_cbow_model
 
 
 class Task:
@@ -46,16 +47,17 @@ def load_analogy_labels(analogy_path: str) -> Dict[str, List[Task]]:
     return analogy_labels
 
 
-if __name__ == '__main__':
+def evaluate_model_on_analogy_labels():
   tasks_by_category = load_analogy_labels(os.path.join('data', 'word-test.v1.txt'))
-
-  conf = Word2VecConfig(model_date=get_latest_word2vec_model())
+  model_date = get_latest_cbow_model()
+  # TODO: make evaluation general to any pytorch model + vocab
+  conf = CBOWConfig(model_date=model_date)
   server = InferenceServer(conf)
   server.load_model(conf.model_checkpoint_path)
+  evaluation_stats = []
+  overall_score, overall_score_no_unknowns, overall_count, overall_count_no_unknowns = 0, 0, 0, 0
   for category, tasks in tasks_by_category.items():
-    print(f'Category: {category}')
-    scores = []
-    scores_no_unknowns = []
+    scores, scores_no_unknowns = [], []
     for task in tasks:
       embedded_words = [server.embed_word(w.lower()) for w in task.get_words()]
       score = cosine_similarity(embedded_words[0] - embedded_words[1],
@@ -64,6 +66,27 @@ if __name__ == '__main__':
         scores_no_unknowns.append(score)
       scores.append(score)
     num_unknowns = len(scores) - len(scores_no_unknowns)
-    print(f'Found unknowns: {num_unknowns} out of {len(scores)}')
-    print(f'Average score: {mean(scores)}')
-    print(f'Average score (no unknowns): {mean(scores_no_unknowns) if scores_no_unknowns else None}')
+    overall_count += len(scores)
+    overall_count_no_unknowns += num_unknowns
+    overall_score += sum(scores)
+    overall_score_no_unknowns += sum(scores_no_unknowns)
+    evaluation_stats.append({
+      'category': category,
+      'average_score': mean(scores),
+      'average_score_no_unknowns': mean(scores_no_unknowns) if scores_no_unknowns else None,
+      'num_unknowns': num_unknowns,
+      'model': model_date,
+    })
+  eval_df = pd.DataFrame(evaluation_stats)
+  output_path = os.path.join(conf.model_checkpoint_dir, 'analogy_evaluation_stats.csv')
+  eval_df.to_csv(output_path, index=False)
+  summary_output_path = os.path.join(conf.model_checkpoint_dir, 'analogy_evaluation_summary_stats.csv')
+  pd.DataFrame([
+    {'name': 'average_score', 'count': overall_count, 'score': overall_score / overall_count},
+    {'name': 'average_score_no_unknowns', 'count': overall_count_no_unknowns,
+     'score': overall_score_no_unknowns / overall_count_no_unknowns},
+  ]).to_csv(summary_output_path, index=False)
+
+
+if __name__ == '__main__':
+  evaluate_model_on_analogy_labels()
