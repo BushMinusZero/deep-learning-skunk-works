@@ -4,7 +4,7 @@ from torch import nn, Tensor, log_softmax
 
 class CBOWModel(nn.Module):
   def __init__(self, vocab_size: int, embedding_dim: int, context_size: int):
-    """ Word to Vector model
+    """ Word to Vector Continuous Bag of words model
     :param vocab_size: equal to the size of the vocabulary
     :param embedding_dim: length of the embedding vector for each word
     :param context_size: the number of context tokens surrounding the target token
