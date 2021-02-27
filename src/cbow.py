@@ -16,7 +16,7 @@ from tqdm import tqdm
 from src.config import CBOWConfig
 from src.early_stopping import EarlyStopping
 from src.models.cbow import CBOWModel
-from src.utils import write_losses, cosine_similarity, train_val_test_split
+from src.utils import write_losses, cosine_similarity, train_val_test_split, tokenize_english_text
 
 
 def load_dataset(output_dir: str) -> Tuple[Tuple[TabularDataset, TabularDataset, TabularDataset], Vocab]:
@@ -132,20 +132,9 @@ def cbow_preprocessing(config: CBOWConfig):
   train_val_test_split(config.raw_data_path, config.data_dir)
 
   # Tokenize files in data_dir
-  # Download en tokenizer with `python -m spacy download en`
-  en_tokenizer = get_tokenizer('spacy', language='en_core_web_sm')
-  tokenized_rows = []
   for filename in ['test.tsv', 'val.tsv', 'train.tsv']:
     data_path = os.path.join(config.data_dir, filename)
-    with open(data_path) as f:
-      reader = csv.reader(f, delimiter='\t')
-      next(reader)  # skip header
-      for row in reader:
-        tokenized_rows.append([' '.join(en_tokenizer(row[0]))])
-    with open(data_path, 'w') as f:
-      writer = csv.writer(f, delimiter='\t')
-      writer.writerow(['eng'])
-      writer.writerows(tokenized_rows)
+    tokenize_english_text(data_path, data_path)
 
   # Create features
   create_cbow_features(config.data_dir, config.features_dir, config.context_size)

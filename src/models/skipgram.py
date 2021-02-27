@@ -1,5 +1,5 @@
 import torch
-from torch import nn, Tensor, log_softmax
+from torch import nn, Tensor
 
 
 class SkipGramModel(nn.Module):
@@ -19,7 +19,7 @@ class SkipGramModel(nn.Module):
   def init_weights(self):
     """Initialize embeddings parameters."""
     init_range = (2.0 / (self.vocab_size + self.embedding_dim)) ** 0.5
-    self.word_embeddings.weight.data.uniform_(-init_range, init_range)
+    self.target_embeddings.weight.data.uniform_(-init_range, init_range)
     self.context_embeddings.weight.data.uniform_(0, 0)
 
   def forward(self, target: Tensor, pos_context: Tensor, neg_context: Tensor):

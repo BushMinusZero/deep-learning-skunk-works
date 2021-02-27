@@ -12,14 +12,14 @@
 
 ### Training models
 - Launch tensorboard
-    ```python
+    ```shell
     tensorboard --logdir=data/word2vec/models/
     ```
 - Train model
-    ```python
+    ```shell
     python src/main.py --train
     ```
 - Evaluate model
-    ```python
+    ```shell
     python src/main.py --eval
     ```

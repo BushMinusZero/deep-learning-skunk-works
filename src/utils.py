@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch import Tensor, nn
+from torchtext.data import get_tokenizer
 
 
 class LanguageDictionary:
@@ -179,3 +180,20 @@ def train_val_test_split(data_path: str, output_dir: str) -> None:
   train_df.to_csv(os.path.join(output_dir, 'train.tsv'), sep='\t', index=False)
   val_df.to_csv(os.path.join(output_dir, 'val.tsv'), sep='\t', index=False)
   test_df.to_csv(os.path.join(output_dir, 'test.tsv'), sep='\t', index=False)
+
+
+def tokenize_english_text(input_path: str, output_path: str, col_index: int = 0):
+  """Tokenize text"""
+  # Download en tokenizer with `python -m spacy download en`
+  en_tokenizer = get_tokenizer('spacy', language='en_core_web_sm')
+  tokenized_rows = []
+  with open(input_path) as f:
+    reader = csv.reader(f, delimiter='\t')
+    header_text = next(reader)
+    for row in reader:
+      tokenized_rows.append([' '.join(en_tokenizer(row[col_index]))])
+  with open(output_path, 'w') as f:
+    writer = csv.writer(f, delimiter='\t')
+    writer.writerow(header_text)
+    writer.writerows(tokenized_rows)
+
