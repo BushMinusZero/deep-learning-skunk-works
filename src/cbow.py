@@ -16,6 +16,7 @@ from tqdm import tqdm
 from src.config import CBOWConfig
 from src.early_stopping import EarlyStopping
 from src.models.cbow import CBOWModel
+from src.train_model import TrainingLoop
 from src.utils import write_losses, cosine_similarity, train_val_test_split, tokenize_english_text
 
 
@@ -140,135 +141,36 @@ def cbow_preprocessing(config: CBOWConfig):
   create_cbow_features(config.data_dir, config.features_dir, config.context_size)
 
 
-class TrainingLoop:
+class CBOWTrainingLoop(TrainingLoop):
 
-  def __init__(self, config: CBOWConfig):
-    self.config = config
-    # Load data and compute vocabulary
-    # TODO: remove sentences that exceed the maximum sequence length
-    self.data_manager = DataManager(self.config.batch_size)
-    self.data_manager.load_data(self.config.features_dir)
-    self.data_manager.save_vocab(self.config.model_vocab_path)
-
-    # Initialize model
-    self.model = CBOWModel(
-      vocab_size=len(self.data_manager.source_vocab),
-      embedding_dim=self.config.embedding_dim,
-      context_size=config.context_size
-    )
-
-    # Initialize optimizer
-    # TODO: move LR to config
-    self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-4)
-
-    # Learning rate scheduler
-    self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, self.config.learning_rate_step_size,
-                                               gamma=self.config.learning_rate_decay)
-
-    # Initialize loss function
-    self.train_losses = []
-    self.val_losses = []
-    self.test_losses = []
-
-    self.num_epochs = self.config.num_epochs
-
-    # Initialize early stopping criteria
-    self.early_stopping = EarlyStopping(
-      model_path=self.config.model_checkpoint_path,
-      patience=self.config.patience
-    )
-
-    # update learning rate
-    print(f"Learning rate: {self.scheduler.get_lr()[0]}")
-    self.scheduler.step()
-
-    # initialize tensorboard writer
-    self.writer = SummaryWriter(self.config.model_checkpoint_dir)
-
-  def save_model_checkpoint(self, epoch: int):
-    torch.save({
-      'epoch': epoch,
-      'model_state_dict': self.model.state_dict(),
-      'optimizer_state_dict': self.optimizer.state_dict(),
-      'train_loss': self.train_losses[-1],
-      'val_loss': self.val_losses[-1],
-    }, self.config.model_checkpoint_path)
-
-  def iterate_epoch(self) -> Generator[int, None, None]:
-
-    for epoch in range(self.num_epochs):
-      print(f'Starting epoch {epoch}')
-      # Iterate over the epochs and train model here
-      yield epoch
-
-      print(f'Train loss: {self.train_losses[-1]}')
-      print(f'Val loss:   {self.val_losses[-1]}')
-      self.early_stopping.check_early_stopping_criteria(self.model, self.optimizer, epoch,
-                                                        train_loss=self.train_losses[-1],
-                                                        val_loss=self.val_losses[-1])
-      if self.early_stopping.early_stop:
-        # End epoch iteration if we meet the early stopping criteria
-        print(f"Triggered early stopping criteria. Stopping after the {epoch}th iteration")
-        break
-
-  def iterate_train(self, epoch: int) -> None:
-    epoch_train_loss = 0
-    self.model.train()
-    for batch in tqdm(self.data_manager.train_iterator):
-      # batch is of type torchtext.data.batch.Batch
-      # batch has dimension X x N where X is the max sequence length and N is the batch_size
-      # the values in batch are the indices of the word in data_manager.source_vocab.itos
-
-      # Before passing in a new instance, you need to zero out the gradients from the old instance
-      self.model.zero_grad()
-
-      # Do a forward pass and compute the loss
-      loss = self.model.compute_loss(batch.context, batch.target)
-
-      # Do the backward pass and update the gradient
-      loss.backward()
-      self.optimizer.step()
-
-      # Update the total loss for the current epoch
-      epoch_train_loss += loss.item()
-      self.writer.add_scalar('Loss/train', epoch_train_loss, epoch)
-      self.writer.add_scalar('Avg Loss/train', epoch_train_loss / self.data_manager.train_size,
-                             epoch)
-
-    # Record this epochs total loss
-    self.train_losses.append(epoch_train_loss)
-
-  def compute_loss(self, data_iterator: BucketIterator, losses: List[int]) -> float:
-    self.model.eval()
-    epoch_loss = 0
-    for batch in tqdm(data_iterator):
-      # Do a forward pass and compute the loss
-      loss = self.model.compute_loss(batch.context, batch.target)
-      epoch_loss += loss.item()
-    losses.append(epoch_loss)
-    return epoch_loss
-
-  def compute_validation_loss(self, epoch: int) -> None:
-    loss = self.compute_loss(self.data_manager.val_iterator, self.val_losses)
-    self.writer.add_scalar('Loss/val', loss, epoch)
-    self.writer.add_scalar('Avg Loss/val', loss / self.data_manager.val_size, epoch)
-
-  def compute_test_loss(self) -> None:
-    self.compute_loss(self.data_manager.test_iterator, self.test_losses)
-
-  def train(self):
-    for epoch in self.iterate_epoch():
-      # Forward and backward pass on training data
-      self.iterate_train(epoch)
-
-      # Forward pass on validation data
-      self.compute_validation_loss(epoch)
+  def compute_loss_from_batch(self, batch) -> Tensor:
+    # Do a forward pass and compute the loss
+    return self.model.compute_loss(batch.context, batch.target)
 
 
 def train():
   conf = CBOWConfig()
   cbow_preprocessing(conf)
-  loop = TrainingLoop(conf)
+
+  # Load data and compute vocabulary
+  # TODO: remove sentences that exceed the maximum sequence length
+  data_manager = DataManager(conf.batch_size)
+  data_manager.load_data(conf.features_dir)
+  data_manager.save_vocab(conf.model_vocab_path)
+
+  # Initialize model
+  model = CBOWModel(
+    vocab_size=len(data_manager.source_vocab),
+    embedding_dim=conf.embedding_dim,
+    context_size=conf.context_size
+  )
+
+  # Initialize optimizer
+  # TODO: move LR to config
+  optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+
+  loop = CBOWTrainingLoop(conf, model, optimizer, data_manager.train_iterator,
+                          data_manager.val_iterator)
   loop.train()
   write_losses(os.path.join(conf.model_checkpoint_dir, 'losses.csv'),
                loop.train_losses, loop.val_losses)

@@ -4,7 +4,23 @@ from typing import Optional
 
 
 class Config:
-  pass
+  batch_size: int = NotImplemented
+  embedding_dim: int = NotImplemented
+  num_epochs: int = NotImplemented
+  patience: int = NotImplemented
+  learning_rate_decay: float = NotImplemented
+  learning_rate_step_size: int = NotImplemented
+  context_size: int = NotImplemented
+
+  raw_data_path: str = NotImplemented
+  output_dir: str = NotImplemented
+  data_dir: str = NotImplemented
+  features_dir: str = NotImplemented
+  model_root_dir: str = NotImplemented
+
+  model_checkpoint_dir: str = NotADirectoryError
+  model_checkpoint_path: str = NotImplemented
+  model_vocab_path: str = NotImplemented
 
 
 class CBOWConfig(Config):
@@ -41,6 +57,7 @@ class SkipGramConfig(Config):
   patience = 4
   learning_rate_decay = 0.9
   learning_rate_step_size = 1
+  context_size = 4
 
   raw_data_path = os.path.join('data', 'eng.txt')
   output_dir = os.path.join('data', 'skip_gram')

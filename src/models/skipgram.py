@@ -43,7 +43,7 @@ class SkipGramModel(nn.Module):
 
     # Compute loss of negative context using bmm (batch matrix-matrix) product
     # [batch_size, num_negative_samples, emb_dim] x [batch_size, emb_dim, 1]
-    neg_val = torch.bmm(embedded_neg_context, embedded_target.unsqueeze())
+    neg_val = torch.bmm(embedded_neg_context, embedded_target.unsqueeze(2))
     # [batch_size]
     neg_loss = self.log_sigmoid(-torch.sum(neg_val, dim=1)).squeeze()
 
