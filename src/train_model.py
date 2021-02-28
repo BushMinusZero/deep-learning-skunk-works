@@ -105,7 +105,7 @@ class TrainingLoop:
     epoch_loss = 0
     for batch in tqdm(data_iterator):
       # Do a forward pass and compute the loss
-      loss = self.model.compute_loss(batch.context, batch.target)
+      loss = self.compute_loss_from_batch(batch)
       epoch_loss += loss.item()
     losses.append(epoch_loss)
     return epoch_loss

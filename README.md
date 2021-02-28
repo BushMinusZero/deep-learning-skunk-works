@@ -13,15 +13,19 @@
 1. TODO: Write unit tests for model training and inference on small data
 
 ### Training models
+- Set model name (e.g. cbow, skipgram, ...)
+    ```shell
+    export MODEL='cbow'
+    ```
 - Launch tensorboard
     ```shell
-    tensorboard --logdir=data/word2vec/models/
+    tensorboard --logdir=data/$MODEL/models/
     ```
 - Train model
     ```shell
-    python src/main.py --train
+    python src/main.py --train --model $MODEL
     ```
 - Evaluate model
     ```shell
-    python src/main.py --eval
+    python src/main.py --eval --model $MODEL
     ```
