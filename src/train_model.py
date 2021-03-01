@@ -34,7 +34,7 @@ class TrainingLoop:
 
     # Initialize early stopping criteria
     self.early_stopping = EarlyStopping(
-      model_path=self.config.model_checkpoint_path,
+      model_path=self.config.model_best_checkpoint_path,
       patience=self.config.patience
     )
 
@@ -45,14 +45,14 @@ class TrainingLoop:
     # initialize tensorboard writer
     self.writer = SummaryWriter(self.config.model_checkpoint_dir)
 
-  def save_model_checkpoint(self, epoch: int):
+  def save_latest_model_checkpoint(self, epoch: int):
     torch.save({
       'epoch': epoch,
       'model_state_dict': self.model.state_dict(),
       'optimizer_state_dict': self.optimizer.state_dict(),
       'train_loss': self.train_losses[-1],
       'val_loss': self.val_losses[-1],
-    }, self.config.model_checkpoint_path)
+    }, self.config.model_latest_checkpoint_path)
 
   def iterate_epoch(self) -> Generator[int, None, None]:
 
@@ -70,6 +70,9 @@ class TrainingLoop:
         # End epoch iteration if we meet the early stopping criteria
         print(f"Triggered early stopping criteria. Stopping after the {epoch}th iteration")
         break
+
+      # Save latest model (not best)
+      self.save_latest_model_checkpoint(epoch)
 
   def compute_loss_from_batch(self, batch: Any) -> Tensor:
     raise NotImplementedError("Should be implemented by parent class.")

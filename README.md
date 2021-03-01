@@ -12,6 +12,14 @@
 1. TODO: Extrinsic model evaluation
 1. TODO: Write unit tests for model training and inference on small data
 
+### Setup
+- Developed using Python 3.9 but probably works on Python 3 version
+```shell
+cd deep-learning-skunk-works/
+export PYTHONPATH=`pwd`
+pip install -r requirements.txt
+```
+
 ### Training models
 - Set model name (e.g. cbow, skipgram, ...)
     ```shell

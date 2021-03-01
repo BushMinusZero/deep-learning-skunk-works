@@ -107,7 +107,6 @@ def prepare_data(lang1: str, lang2: str, reverse: bool = False):
   input_dict, output_dict, pairs = read_parallel_corpus(lang1, lang2, reverse)
   print(f"Read {len(pairs)} sentence pairs")
   pairs = filter_pairs(pairs)
-  # breakpoint()
   print(f"Trimmed to {len(pairs)} sentence pairs")
   for text in pairs:
     input_dict.add_sentence(text[0])
@@ -183,7 +182,7 @@ def train_val_test_split(data_path: str, output_dir: str) -> None:
 
 
 def tokenize_english_text(input_path: str, output_path: str, col_index: int = 0):
-  """Tokenize text"""
+  """Tokenize and lowercase text"""
   # Download en tokenizer with `python -m spacy download en`
   en_tokenizer = get_tokenizer('spacy', language='en_core_web_sm')
   tokenized_rows = []
@@ -191,7 +190,7 @@ def tokenize_english_text(input_path: str, output_path: str, col_index: int = 0)
     reader = csv.reader(f, delimiter='\t')
     header_text = next(reader)
     for row in reader:
-      tokenized_rows.append([' '.join(en_tokenizer(row[col_index]))])
+      tokenized_rows.append([' '.join(en_tokenizer(row[col_index].lower()))])
   with open(output_path, 'w') as f:
     writer = csv.writer(f, delimiter='\t')
     writer.writerow(header_text)

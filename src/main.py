@@ -7,9 +7,8 @@ import skipgram
 
 def parse_args():
   parser = argparse.ArgumentParser()
-  # TODO: add model type arguments: cbow, skipgram, glove, ...
   parser.add_argument('-m', '--model', type=str, help='Specify a model type',
-                      choices=['cbow', 'skipgram'])
+                      choices=['cbow', 'skipgram', 'glove'])
   parser.add_argument('-t', '--train', action='store_true', help='Train a model')
   parser.add_argument('-i', '--infer', action='store_true', help='Run model inference')
   parser.add_argument('-e', '--eval', action='store_true', help='Run model evaluation')
@@ -24,8 +23,11 @@ if __name__ == '__main__':
       if args.infer:
         cbow.inference()
       if args.eval:
-        evaluation.evaluate_model_on_analogy_labels()
+        evaluation.evaluate_cbow_model_on_analogy_labels()
     elif args.model == 'skipgram':
-      skipgram.train()
-      # TODO: implement train, inference, and evaluation
+      if args.train:
+        skipgram.train()
+      if args.eval:
+        evaluation.evaluate_skip_gram_model_on_analogy_labels()
+    elif args.model == 'glove':
       raise NotImplementedError

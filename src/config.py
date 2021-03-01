@@ -19,8 +19,15 @@ class Config:
   model_root_dir: str = NotImplemented
 
   model_checkpoint_dir: str = NotADirectoryError
-  model_checkpoint_path: str = NotImplemented
+  model_best_checkpoint_path: str = NotImplemented
+  model_latest_checkpoint_path: str = NotImplemented
   model_vocab_path: str = NotImplemented
+
+  @classmethod
+  def get_latest_model(cls, date_fmt: str = '%Y-%m-%dT%H:%M:%S') -> str:
+    model_dirs = os.listdir(cls.model_root_dir)
+    dates = [datetime.strptime(d, date_fmt) for d in model_dirs]
+    return max(dates).strftime(date_fmt)
 
 
 class CBOWConfig(Config):
@@ -46,14 +53,15 @@ class CBOWConfig(Config):
     os.makedirs(self.data_dir, exist_ok=True)
     os.makedirs(self.model_root_dir, exist_ok=True)
     os.makedirs(self.model_checkpoint_dir, exist_ok=True)
-    self.model_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model.pt')
+    self.model_best_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model_best.pt')
+    self.model_latest_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model_latest.pt')
     self.model_vocab_path = os.path.join(self.model_checkpoint_dir, 'vocab.txt')
 
 
 class SkipGramConfig(Config):
   batch_size = 32
   embedding_dim = 64
-  num_epochs = 10
+  num_epochs = 15
   patience = 4
   learning_rate_decay = 0.9
   learning_rate_step_size = 1
@@ -73,5 +81,7 @@ class SkipGramConfig(Config):
     os.makedirs(self.data_dir, exist_ok=True)
     os.makedirs(self.model_root_dir, exist_ok=True)
     os.makedirs(self.model_checkpoint_dir, exist_ok=True)
-    self.model_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model.pt')
+    self.model_best_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model_best.pt')
+    self.model_latest_checkpoint_path = os.path.join(self.model_checkpoint_dir, 'model_latest.pt')
     self.model_vocab_path = os.path.join(self.model_checkpoint_dir, 'vocab.txt')
+

@@ -53,3 +53,7 @@ class SkipGramModel(nn.Module):
   def predict(self, target: Tensor):
     """Make an inference using the target embedding."""
     return self.target_embeddings(target)
+
+  @property
+  def embeddings(self):
+    return self.target_embeddings

@@ -1,10 +1,10 @@
 import csv
 import os
 from datetime import datetime
-from typing import Tuple, Generator, List, Callable
+from typing import Tuple, Generator, List, Callable, Dict
 
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 from torchtext import data
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
@@ -13,7 +13,7 @@ from torchtext.data import TabularDataset, BucketIterator, get_tokenizer
 from torchtext.vocab import Vocab
 from tqdm import tqdm
 
-from src.config import CBOWConfig
+from src.config import CBOWConfig, Config
 from src.early_stopping import EarlyStopping
 from src.models.cbow import CBOWModel
 from src.train_model import TrainingLoop
@@ -91,15 +91,19 @@ class DataManager:
   def save_vocab(self, output_path: str) -> None:
     """Save vocabulary generated during model training."""
     with open(output_path, 'w+') as f:
+      writer = csv.writer(f, delimiter='\t')
+      writer.writerow(['index', 'token'])
       for token, index in self.source_vocab.stoi.items():
-        f.write(f'{index}\t{token}\n')
+        writer.writerow([index, token])
 
   @staticmethod
   def read_vocab(path: str):
     vocab = dict()
     with open(path, 'r') as f:
+      reader = csv.reader(f, delimiter='\t')
+      next(reader)  # skip header
       for line in f:
-        index, token = line.split('\t')
+        index, token = line[0], line[1]
         vocab[token.strip()] = int(index)
     return vocab
 
@@ -176,30 +180,18 @@ def train():
                loop.train_losses, loop.val_losses)
 
 
-# TODO: make a generic embedding inference server general to any pytorch model + vocab
 class InferenceServer:
 
-  def __init__(self, config: CBOWConfig):
+  def __init__(self, config: Config, model: nn.Module, vocab: Dict[str, int]):
     self.config = config
-    self.model = None
-    data_manager = DataManager(self.config.batch_size)
-    self.vocab = data_manager.read_vocab(self.config.model_vocab_path)
-    self.unk_index = self.vocab['<unk>']
+    self.model = model
+    self.vocab = vocab
+    self.oov_index = self.vocab['<oov>']
 
   def embed_tokens(self, tokens: List[str]) -> Tensor:
-    sentence_indices = [self.vocab.get(word, self.unk_index) for word in tokens]
+    sentence_indices = [self.vocab.get(word, self.oov_index) for word in tokens]
     sentence_tensor = torch.LongTensor(sentence_indices)
     return self.model.embeddings(sentence_tensor)
-
-  def load_model(self, model_path: str):
-    self.model = CBOWModel(
-      vocab_size=len(self.vocab),
-      embedding_dim=self.config.embedding_dim,
-      context_size=self.config.context_size
-    )
-    model_info = torch.load(model_path)
-    self.model.load_state_dict(model_info['model_state_dict'])
-    self.model.eval()
 
   def embed_word(self, word: str) -> Tensor:
     return self.embed_tokens([word]).squeeze()
@@ -211,16 +203,25 @@ class InferenceServer:
     return similarity_func(e1, e2).item()
 
 
-def get_latest_cbow_model(date_fmt: str = '%Y-%m-%dT%H:%M:%S') -> str:
-  model_dirs = os.listdir(CBOWConfig.model_root_dir)
-  dates = [datetime.strptime(d, date_fmt) for d in model_dirs]
-  return max(dates).strftime(date_fmt)
+def load_cbow_model(model_path: str, vocab: Dict[str, int], config: Config):
+  model = CBOWModel(
+    vocab_size=len(vocab),
+    embedding_dim=config.embedding_dim,
+    context_size=config.context_size
+  )
+  model_info = torch.load(model_path)
+  model.load_state_dict(model_info['model_state_dict'])
+  model.eval()
+  return model
 
 
 def inference():
-  conf = CBOWConfig(model_date=get_latest_cbow_model())
-  server = InferenceServer(conf)
-  server.load_model(conf.model_checkpoint_path)
+
+  config = CBOWConfig(model_date=get_latest_model(CBOWConfig.model_root_dir))
+  data_manager = DataManager(config.batch_size)
+  vocab = data_manager.read_vocab(config.model_vocab_path)
+  model = load_cbow_model(config.model_best_checkpoint_path, vocab, config)
+  server = InferenceServer(config, model, vocab)
 
   word1, word2 = 'hello', 'hi'
   similarity = server.calculate_similarity(word1, word2, similarity_func=cosine_similarity)
