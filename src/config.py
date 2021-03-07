@@ -29,6 +29,13 @@ class Config:
     dates = [datetime.strptime(d, date_fmt) for d in model_dirs]
     return max(dates).strftime(date_fmt)
 
+  @classmethod
+  def get_project_root(cls):
+    project_root = os.getenv('PROJECT_ROOT')
+    assert project_root, "Env variable PROJECT_ROOT not set."
+    assert os.path.exists(project_root), f"Path PROJECT_ROOT={project_root} does not exist."
+    return project_root
+
 
 class CBOWConfig(Config):
   batch_size = 32
@@ -39,8 +46,9 @@ class CBOWConfig(Config):
   learning_rate_step_size = 1
   context_size = 4
 
-  raw_data_path = os.path.join('data', 'eng.txt')
-  output_dir = os.path.join('data', 'cbow')
+  project_root = Config.get_project_root()
+  raw_data_path = os.path.join(project_root, 'data', 'eng.txt')
+  output_dir = os.path.join(project_root, 'data', 'cbow')
   data_dir = os.path.join(output_dir, 'data')
   features_dir = os.path.join(output_dir, 'features')
   model_root_dir = os.path.join(output_dir, 'models')
@@ -61,14 +69,15 @@ class CBOWConfig(Config):
 class SkipGramConfig(Config):
   batch_size = 32
   embedding_dim = 64
-  num_epochs = 15
-  patience = 4
+  num_epochs = 20
+  patience = 5
   learning_rate_decay = 0.9
   learning_rate_step_size = 1
   context_size = 4
 
-  raw_data_path = os.path.join('data', 'eng.txt')
-  output_dir = os.path.join('data', 'skip_gram')
+  project_root = Config.get_project_root()
+  raw_data_path = os.path.join(project_root, 'data', 'eng.txt')
+  output_dir = os.path.join(project_root, 'data', 'skip_gram')
   data_dir = os.path.join(output_dir, 'data')
   features_dir = os.path.join(output_dir, 'features')
   model_root_dir = os.path.join(output_dir, 'models')

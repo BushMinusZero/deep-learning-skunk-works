@@ -96,8 +96,9 @@ class TrainingLoop:
 
       # Update the total loss for the current epoch
       epoch_train_loss += loss.item()
-      self.writer.add_scalar('Loss/train', epoch_train_loss, epoch)
-      self.writer.add_scalar('Avg Loss/train', epoch_train_loss / len(self.train_iterator), epoch)
+
+    self.writer.add_scalar('Loss/train', epoch_train_loss, epoch)
+    self.writer.add_scalar('Avg Loss/train', epoch_train_loss / len(self.train_iterator), epoch)
 
     # Record this epochs total loss
     self.train_losses.append(epoch_train_loss)

@@ -2,14 +2,19 @@
 
 
 ### Contents
-1. Implementation of Word2Vec using Continuous Bag of Words (CBOW)
-1. Intrinsic evaluation metric using analogy labels from ["Efficient Estimation of Word Representations in Vector Space"](https://arxiv.org/pdf/1301.3781.pdf)
-1. Implementation of Word2Vec using Skip-gram
-   
+1. [Implementation of Word2Vec using Continuous Bag of Words (CBOW)](src/cbow.py)
+1. [Intrinsic evaluation metric using analogy labels](src/evaluation.py) from ["Efficient Estimation of Word Representations in Vector Space"](https://arxiv.org/pdf/1301.3781.pdf)
+1. [Implementation of Word2Vec using Skip-gram](src/skipgram.py)
+1. [TSNE for visualizing embeddings of analogy pairs](scripts/Comparing%20t-SNE.ipynb)
+
 ### Next up
-1. TODO: TSNE for visualizing embeddings
-1. TODO: GLOVE embeddings
-1. TODO: Extrinsic model evaluation
+1. TODO: k-nearest neighbors analysis for finding similar words
+1. TODO: filter to the N most common words in the training corpus and mark the rest as OOV
+1. TODO: download a larger dataset (GloVe paper uses Gigaword5, Wikipedia2014, and [Common Crawl](https://commoncrawl.org/the-data/get-started/))
+1. TODO: Train [GloVe embeddings](https://nlp.stanford.edu/pubs/glove.pdf)
+1. TODO: increase the size of the context vector to 300 depending on training speed
+1. TODO: Evaluate on word similarity task [WordSim-353](http://alfonseca.org/eng/research/wordsim353.html) used in GloVe paper
+1. TODO: Extrinsic model evaluation (NER)
 1. TODO: Write unit tests for model training and inference on small data
 
 ### Setup
@@ -17,6 +22,7 @@
 ```shell
 cd deep-learning-skunk-works/
 export PYTHONPATH=`pwd`
+export PROJECT_ROOT=`pwd`
 pip install -r requirements.txt
 ```
 
