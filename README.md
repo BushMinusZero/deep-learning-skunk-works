@@ -6,9 +6,9 @@
 1. [Intrinsic evaluation metric using analogy labels](src/evaluation.py) from ["Efficient Estimation of Word Representations in Vector Space"](https://arxiv.org/pdf/1301.3781.pdf)
 1. [Implementation of Word2Vec using Skip-gram](src/skipgram.py)
 1. [TSNE for visualizing embeddings of analogy pairs](scripts/Comparing%20t-SNE.ipynb)
+1. [Nearest Neighbors analysis for finding similar words](scripts/KNN.ipynb)
 
 ### Next up
-1. TODO: k-nearest neighbors analysis for finding similar words
 1. TODO: filter to the N most common words in the training corpus and mark the rest as OOV
 1. TODO: download a larger dataset (GloVe paper uses Gigaword5, Wikipedia2014, and [Common Crawl](https://commoncrawl.org/the-data/get-started/))
 1. TODO: Train [GloVe embeddings](https://nlp.stanford.edu/pubs/glove.pdf)
